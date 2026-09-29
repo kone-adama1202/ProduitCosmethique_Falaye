@@ -4,6 +4,7 @@ import { formatPrice } from '@/lib/format';
 import { useEffect, useState } from 'react';
 import type { CartItem } from '@/lib/supabase';
 import { supabase } from '@/lib/supabase';
+import emailjs from '@emailjs/browser';
 
 type CartDrawerProps = {
   onCheckout: () => void;
@@ -50,6 +51,7 @@ export default function CartDrawer({ onCheckout }: CartDrawerProps) {
 
     setSubmitting(true);
     try {
+      // 1. Enregistrer la commande dans Supabase
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -77,6 +79,24 @@ export default function CartDrawer({ onCheckout }: CartDrawerProps) {
         .insert(orderItems);
 
       if (itemsError) throw itemsError;
+
+      // 2. Envoyer l'email via EmailJS (une erreur ici n'annule pas la commande)
+      try {
+        await emailjs.send(
+          import.meta.env.VITE_EMAILJS_SERVICE_ID,
+          import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+          {
+            customer_name: customerName,
+            customer_phone: customerPhone,
+            customer_address: customerAddress || 'Non spécifiée',
+            total_amount: formatPrice(totalAmount),
+            items: items.map((i) => `${i.product.name} x${i.quantity}`).join(', '),
+          },
+          { publicKey: import.meta.env.VITE_EMAILJS_PUBLIC_KEY }
+        );
+      } catch (emailErr: any) {
+        console.error('EmailJS error:', emailErr?.status, emailErr?.text ?? emailErr);
+      }
 
       setOrderSuccess(true);
       clearCart();
